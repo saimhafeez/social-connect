@@ -9,12 +9,12 @@ const app = express();
 
 // Configuration - replace these with your actual values
 const CONFIG = {
-  CLIENT_ID: 'YOUR_GOOGLE_CLIENT_ID',
-  CLIENT_SECRET: 'YOUR_GOOGLE_CLIENT_SECRET',
-  JWT_SECRET: 'YOUR_SECURE_JWT_SECRET', // Generate a strong random string
+  CLIENT_ID: '231297576692-0d52jql98elho2q7m08h9qr3csq8k7n2.apps.googleusercontent.com',
+  CLIENT_SECRET: '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',
+  JWT_SECRET: '4c5b76e5-9c68-415f-90c9-e315456026f7', // Generate a strong random string
   TOKEN_EXPIRY: '5m', // Token expiry time
   COOKIE_NAME: 'google_auth_state',
-  COMPANION_DOMAIN: 'https://your-render-app.onrender.com', // Your render.com app URL
+  COMPANION_DOMAIN: 'https://social-connect-f02m.onrender.com', // Your render.com app URL
   ALLOWED_REDIRECT_PATHS: ['/'], // Paths allowed for redirect
 };
 
