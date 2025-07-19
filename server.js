@@ -145,41 +145,78 @@ app.get('/login/google/callback', async (req, res) => {
       picture: data.picture,
     }, CONFIG.JWT_SECRET, { expiresIn: '1m' });
 
-    // Redirect back to the client with the token
-    const redirectUrl = new URL(origin);
-    redirectUrl.searchParams.set('loginToken', loginToken);
-    
-    // Render a page that will postMessage back to the parent
+    // Improved postMessage handling with retry logic
     res.send(`
       <!DOCTYPE html>
       <html>
       <head>
         <title>Google Authentication</title>
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+          .spinner { margin: 20px auto; width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; }
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        </style>
+        <script>
+          function sendMessage() {
+            try {
+              const token = '${loginToken}';
+              if (window.opener && !window.opener.closed) {
+                window.opener.postMessage({
+                  source: 'companion-google-login',
+                  loginToken: token,
+                  status: 'success'
+                }, '${origin}');
+                
+                // Close after short delay to ensure message is delivered
+                setTimeout(() => window.close(), 300);
+              } else {
+                // Retry for a few seconds if opener isn't available immediately
+                if (retryCount < 10) {
+                  retryCount++;
+                  setTimeout(sendMessage, 300);
+                } else {
+                  document.getElementById('status').innerHTML = 
+                    '<p style="color:red">Could not communicate with the main window. Please return to the app.</p>';
+                }
+              }
+            } catch (e) {
+              console.error('Message sending error:', e);
+            }
+          }
+          
+          let retryCount = 0;
+          window.addEventListener('load', sendMessage);
+        </script>
+      </head>
+      <body>
+        <div class="spinner"></div>
+        <div id="status">Completing authentication...</div>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Authentication Error</title>
         <script>
           window.addEventListener('load', function() {
-            const token = '${loginToken}';
             window.opener.postMessage({
               source: 'companion-google-login',
-              loginToken: token
-            }, '${CONFIG.COMPANION_DOMAIN}');
-            
+              status: 'error',
+              error: 'Authentication failed: ${error.message.replace(/'/g, "\\'")}'
+            }, '${origin}');
             window.close();
           });
         </script>
       </head>
       <body>
-        <p>Authentication successful. You can close this window.</p>
+        <p>Authentication failed. You can close this window.</p>
       </body>
       </html>
     `);
-
-  } catch (error) {
-    console.error('Google auth error:', error);
-    
-    // Redirect back with error
-    const redirectUrl = new URL(origin);
-    redirectUrl.searchParams.set('error', 'Authentication failed');
-    res.redirect(redirectUrl.toString());
   }
 });
 
