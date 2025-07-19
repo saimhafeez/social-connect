@@ -107,9 +107,8 @@ app.get('/login/google', (req, res) => {
 
 /**
  * Google OAuth callback handler
- */
-app.get('/login/google/callback', async (req, res) => {
-  const { code, state } = req.query;
+ */app.get('/login/google/callback', async (req, res) => {
+  const { code } = req.query;
   const stateToken = req.cookies[CONFIG.COOKIE_NAME];
 
   if (!stateToken) {
@@ -138,59 +137,68 @@ app.get('/login/google/callback', async (req, res) => {
       throw new Error('Email not found in user data');
     }
 
-    // Create a short-lived token to pass back to the client
+    // Create a short-lived token
     const loginToken = jwt.sign({
       email: data.email,
       name: data.name,
       picture: data.picture,
     }, CONFIG.JWT_SECRET, { expiresIn: '1m' });
 
-    // Improved postMessage handling with retry logic
+    // Send HTML that will handle the communication
     res.send(`
       <!DOCTYPE html>
       <html>
       <head>
         <title>Google Authentication</title>
-        <style>
-          body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-          .spinner { margin: 20px auto; width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; }
-          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        </style>
         <script>
-          function sendMessage() {
-            try {
-              const token = '${loginToken}';
+          (function() {
+            const token = '${loginToken}';
+            const targetOrigin = '${origin}';
+            
+            // First try immediate communication
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage({
+                source: 'companion-google-login',
+                loginToken: token,
+                status: 'success'
+              }, targetOrigin);
+              
+              // Store token in localStorage as fallback
+              localStorage.setItem('googleAuthToken', token);
+              localStorage.setItem('googleAuthOrigin', targetOrigin);
+              
+              // Close after slight delay
+              setTimeout(() => window.close(), 100);
+            } else {
+              // If no opener, show manual close button
+              document.getElementById('auto-close').style.display = 'none';
+              document.getElementById('manual-close').style.display = 'block';
+            }
+            
+            // Beforeunload handler as additional safety
+            window.addEventListener('beforeunload', function() {
               if (window.opener && !window.opener.closed) {
                 window.opener.postMessage({
                   source: 'companion-google-login',
                   loginToken: token,
                   status: 'success'
-                }, '${origin}');
-                
-                // Close after short delay to ensure message is delivered
-                setTimeout(() => window.close(), 300);
-              } else {
-                // Retry for a few seconds if opener isn't available immediately
-                if (retryCount < 10) {
-                  retryCount++;
-                  setTimeout(sendMessage, 300);
-                } else {
-                  document.getElementById('status').innerHTML = 
-                    '<p style="color:red">Could not communicate with the main window. Please return to the app.</p>';
-                }
+                }, targetOrigin);
               }
-            } catch (e) {
-              console.error('Message sending error:', e);
-            }
-          }
-          
-          let retryCount = 0;
-          window.addEventListener('load', sendMessage);
+            });
+          })();
         </script>
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
+          #manual-close { display: none; margin-top: 20px; }
+          button { padding: 10px 20px; background: #4285F4; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        </style>
       </head>
       <body>
-        <div class="spinner"></div>
-        <div id="status">Completing authentication...</div>
+        <p id="auto-close">Authentication complete. Closing window...</p>
+        <div id="manual-close">
+          <p>Authentication complete. You may now close this window.</p>
+          <button onclick="window.close()">Close Window</button>
+        </div>
       </body>
       </html>
     `);
@@ -202,18 +210,16 @@ app.get('/login/google/callback', async (req, res) => {
       <head>
         <title>Authentication Error</title>
         <script>
-          window.addEventListener('load', function() {
-            window.opener.postMessage({
-              source: 'companion-google-login',
-              status: 'error',
-              error: 'Authentication failed: ${error.message.replace(/'/g, "\\'")}'
-            }, '${origin}');
-            window.close();
-          });
+          window.opener.postMessage({
+            source: 'companion-google-login',
+            status: 'error',
+            error: '${error.message.replace(/'/g, "\\'")}'
+          }, '${origin}');
+          window.close();
         </script>
       </head>
       <body>
-        <p>Authentication failed. You can close this window.</p>
+        <p>Authentication failed. Closing window...</p>
       </body>
       </html>
     `);
